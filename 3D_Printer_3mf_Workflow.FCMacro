@@ -2349,6 +2349,37 @@ def ask_incompatible_slicer_dialog(s_source, s_target):
         return "delete"
     return "cancel"
 
+def ask_to_save():
+    """
+    Prompt the user to save an unsaved project, continue in a temporary folder, or cancel.
+    """
+    msg = QtGui.QMessageBox()
+    msg.setIcon(QtGui.QMessageBox.Warning)
+    msg.setWindowTitle(tr("warn_title"))
+    msg.setText(tr("error_no_save")) # TODO: change to warning in def
+    msg.setInformativeText("Save it before continuing?") # TODO: Translate
+
+    # Boutons
+    btn_save = msg.addButton("Save Project", QtGui.QMessageBox.AcceptRole) # TODO: Translate
+    btn_continue = msg.addButton(
+        "Continue Without Saving", # TODO: Check for sentence case
+        QtGui.QMessageBox.DestructiveRole,
+    )
+    btn_cancel =msg.addButton(tr("btn_cancel"), QtGui.QMessageBox.RejectRole)
+    msg.setDefaultButton(btn_save)
+
+    msg.exec()
+    clicked = msg.clickedButton()
+    
+    if clicked == btn_save:
+        return "save"
+    elif clicked == btn_continue:
+        return "continued"
+    elif clicked == btn_cancel:
+        return "cancel"
+
+
+
 def prepare_environment():
     """
     Prépare l’environnement :
@@ -2371,9 +2402,41 @@ def prepare_environment():
         return None
 
     fcstd_path = doc.FileName
+
     if not fcstd_path:
-        show_message(tr("error_title"), tr("error_no_save"))
-        return None
+        action = ask_to_save()
+
+        if action == "cancel":
+            return None
+
+        elif action == "save":
+            FreeCADGui.runCommand("Std_SaveAs")
+
+            doc = FreeCAD.ActiveDocument
+
+            if not doc or not doc.FileName:
+                # Cancelled?
+                print("user cancled the save?")
+                return None
+            if not os.path.isfile(doc.FileName):
+                # this can kind of only mean the save went horribly wrong
+                print("something terrible happened")
+                show_message(tr("error_title"), "File save failed, you must SaveAs Manually.")
+                # Something nasty happens here where the document now has an asociated file but that file probably can't exist (noaccess)
+                # This is arguably a bug in the SaveAs dialog as this happens when you try to save a blank docuemnt to /dev/null
+                # TODO: Work around this better and file a bugreport with freecad.
+                return None
+
+        elif action == "continued":
+            temp_dir = tempfile.mkdtemp(prefix="freecad_3mf_")
+
+            safe_name = re.sub(r"[^\w.-]+", "_", doc.Label).strip("._") # TODO: Maybe switch to body name here. It's almost always going to comeback with "Unnamed"
+            if not safe_name:
+                safe_name = "Untitled"
+
+            fcstd_path = os.path.join(temp_dir, safe_name + ".FCStd")
+            print("Using temporary output directory:", temp_dir)
+        
 
     # Construction des chemins
     base_name = os.path.splitext(fcstd_path)[0]

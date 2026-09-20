@@ -195,6 +195,8 @@ TRANSLATIONS = {
         # "btn_keep": "Conserver",
         "btn_delete": "Ok",
         "btn_cancel": "Annuler",
+        "btn_save_project": "Enregistrer le projet",
+        "btn_continue_without_saving": "Continuer sans enregistrer",
 
         # Options UI
         "options_title": "Options d'export vers Slicer",
@@ -215,7 +217,12 @@ TRANSLATIONS = {
 
         # Messages d'erreur / avertissement
         "error_no_doc": "❌ Aucun document ouvert dans FreeCAD.",
-        "warn_no_save": "❌ Le projet n'a pas encore été sauvegardé.",
+        "error_no_save": "❌ Le projet n'a pas encore été sauvegardé.",
+        "error_save_failed_title": "L’enregistrement de votre fichier a échoué",
+        "error_save_failed_message":
+            "Pour éviter toute perte de données, essayez immédiatement d’enregistrer à nouveau votre fichier "
+            "en utilisant l’option « Enregistrer sous » du menu.",
+        "save_before_continuing": "L’enregistrer avant de continuer ?",
         "warn_no_selection": "⚠️ Aucun objet sélectionné.",
         "warn_multi_selection": "⚠️ Sélection multiple non supportée.",
         "error_write_ini": "❌ Écriture impossible sur le fichier ini :",
@@ -295,6 +302,8 @@ TRANSLATIONS = {
         # "btn_keep": "Keep",
         "btn_delete": "Ok",
         "btn_cancel": "Cancel",
+        "btn_save_project": "Save project",
+        "btn_continue_without_saving": "Continue without saving",
 
         # UI options
         "options_title": "Export options for Slicer",
@@ -314,7 +323,11 @@ TRANSLATIONS = {
 
         # Error / warning messages
         "error_no_doc": "❌ No document open in FreeCAD.",
-        "warn_no_save": "❌ The project has not been saved yet.",
+        "error_no_save": "❌ The project has not been saved yet.",
+        "error_save_failed_title": "Your file failed to save",
+        "error_save_failed_message":
+            "You should try saving your file again using the Save As option in the menu immediately to avoid losing data.",
+        "save_before_continuing": "Save it before continuing?",
         "warn_no_selection": "⚠️ No object selected.",
         "warn_multi_selection": "⚠️ Multiple selection not supported.",
         "error_write_ini": "❌ Unable to write to the ini file:",
@@ -395,6 +408,8 @@ TRANSLATIONS = {
         # Buttons
         "btn_delete": "Ok",
         "btn_cancel": "Abbrechen",
+        "btn_save_project": "Projekt speichern",
+        "btn_continue_without_saving": "Ohne Speichern fortfahren",
 
         # UI options
         "options_title": "Export Optionen für QidiStudio",
@@ -415,7 +430,12 @@ TRANSLATIONS = {
 
         # Error / warning messages
         "error_no_doc": "❌ Es ist kein Dokument in FreeCAD geöffnet.",
-        "warn_no_save": "❌ Das Projekt wurde noch nicht gespeichert.",
+        "error_no_save": "❌ Das Projekt wurde noch nicht gespeichert.",
+        "error_save_failed_title": "Ihre Datei konnte nicht gespeichert werden",
+        "error_save_failed_message":
+            "Versuchen Sie sofort, Ihre Datei über die Menüoption „Speichern unter“ erneut zu speichern, "
+            "um Datenverlust zu vermeiden.",
+        "save_before_continuing": "Vor dem Fortfahren speichern?",
         "warn_no_selection": "⚠️ Kein Objekt ist ausgewählt.",
         "warn_multi_selection": "⚠️ Die Auswahl von mehreren Objekten wird nicht unterstützt.",
         "error_write_ini": "❌ Die ini Datei konnte nicht beschrieben werden:",
@@ -513,8 +533,18 @@ def tr(key):
 # Fonctions utilitaires
 ##############################################################
 # Affiche une boîte de message d’information dans FreeCAD
-def show_message(title, message):
-    QtGui.QMessageBox.information(None, title, message)
+def show_message(title, message, icon=QtGui.QMessageBox.Information):
+    msg = QtGui.QMessageBox()
+    msg.setText(message)
+    msg.setIcon(icon)
+
+    msg.setWindowTitle(title) # macOS ignore ce titre ; on l’ajoute donc au corps du message.
+    if platform.system() == "Darwin":
+        msg.setText(f"<b>{title}</b>")
+        msg.setInformativeText(message)
+
+    msg.exec()
+
 
 # -------------------------
 # Rotation des sauvegardes
@@ -2351,24 +2381,22 @@ def ask_incompatible_slicer_dialog(s_source, s_target):
 
 def ask_to_save():
     """
-    Pardonne mon français traduit par l’IA, mon ami.
     Demande à l’utilisateur d’enregistrer un projet non sauvegardé, de continuer
-dans un dossier temporaire ou d’annuler.
-
+    dans un dossier temporaire ou d’annuler.
     """
     msg = QtGui.QMessageBox()
     msg.setIcon(QtGui.QMessageBox.Warning)
     msg.setWindowTitle(tr("warn_title"))
-    msg.setText(tr("warn_no_save"))
-    msg.setInformativeText("Save it before continuing?") # TODO: Translate
+    msg.setText(tr("error_no_save"))
+    msg.setInformativeText(tr("save_before_continuing"))
 
     # Boutons
-    btn_save = msg.addButton("Save project", QtGui.QMessageBox.AcceptRole)
+    btn_save = msg.addButton(tr("btn_save_project"), QtGui.QMessageBox.AcceptRole)
     btn_continue = msg.addButton(
-        "Continue without saving",  # TODO: Translate
-        QtGui.QMessageBox.DestructiveRole,
+        tr("btn_continue_without_saving"),
+        QtGui.QMessageBox.DestructiveRole
     )
-    btn_cancel = msg.addButton(tr("btn_cancel"), QtGui.QMessageBox.RejectRole)
+    btn_cancel =msg.addButton(tr("btn_cancel"), QtGui.QMessageBox.RejectRole)
     msg.setDefaultButton(btn_save)
 
     msg.exec()
@@ -2416,22 +2444,24 @@ def prepare_environment():
             doc = FreeCAD.ActiveDocument
 
             if not doc or not doc.FileName:
-                # Most likely the user cancelled the save action. 
-                # This should have no side effects.
+                # L’utilisateur a annulé l’enregistrement.
                 return None
             if not os.path.isfile(doc.FileName):
+                # Une erreur non gérée est survenue lors de l’enregistrement du document.
+                # Le document est probablement dans un état partiellement incohérent,
+                # avec un fichier associé ou des propriétés invalides.
                 # https://github.com/FreeCAD/FreeCAD/issues/32482
-                # this can kind of only mean the save went horribly wrong. 
-                # We might need to more generally test if the output dir is writeable premeptively, i'm not sure what FreeCAD does here.
-                print("something terrible happened")
-                show_message(tr("error_title"), "File save failed, you must SaveAs Manually.")
-                # Something nasty happens here where the document now has an asociated file but that file probably can't exist (noaccess)
-                # This is arguably a bug in the SaveAs dialog as this happens when you try to save a blank docuemnt to /dev/null
-                #  TODO: Work around this better and file a bugreport with freecad.
+                show_message(
+                    tr("error_save_failed_title"),
+                    tr("error_save_failed_message"),
+                    QtGui.QMessageBox.Critical
+                    )
                 return None
+            fcstd_path = doc.FileName
 
         elif action == "continued":
-            #  TODO: Deal with Flatpack.
+            # TODO: Sous Flatpak, utiliser un dossier temporaire accessible depuis le système hôte et le nettoyer.
+            # Flatpak pose problème ici, notamment si l’on ferme FreeCAD.
             temp_dir = tempfile.mkdtemp(prefix="freecad_3mf_")
 
             safe_name = re.sub(r"[^\w.-]+", "_", doc.Label).strip("._")
